@@ -1,7 +1,21 @@
+/* eslint-disable react-native/no-inline-styles */
 import React, { useEffect, useState, useRef } from 'react';
-import { SafeAreaView, ScrollView, StatusBar, StyleSheet, Text, TouchableOpacity, useColorScheme, View, useWindowDimensions, Image } from 'react-native';
-
+import {
+  SafeAreaView,
+  ScrollView,
+  StatusBar,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  useColorScheme,
+  View,
+  useWindowDimensions,
+  Image,
+  LayoutAnimation,
+} from 'react-native';
+import { CameraRoll } from '@react-native-camera-roll/camera-roll';
 import { Camera, useCameraDevices } from 'react-native-vision-camera';
+import { PERMISSIONS, RESULTS, check, request } from 'react-native-permissions';
 
 const App = props => {
   const dual = useCameraDevices('dual-camera');
@@ -21,6 +35,8 @@ const App = props => {
   const [frontDevices, setFrontDevices] = useState([]);
   const [backDevices, setBackDevices] = useState([]);
 
+  const [recording, setRecording] = useState(false);
+  const [type, setType] = useState('photo');
   const [frontOrBack, setFrontOrBack] = useState('back');
   const [selectedDeviceName, setSelectedDeviceName] = useState();
 
@@ -35,9 +51,30 @@ const App = props => {
     return () => {};
   }, []);
 
+  const setCameraType = d => {
+    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+    setType(d);
+  };
+
   const permissionCheck = async () => {
-    const newCameraPermission = await Camera.requestCameraPermission();
-    const newMicrophonePermission = await Camera.requestMicrophonePermission();
+    // const newCameraPermission = await Camera.requestCameraPermission();
+    // const newMicrophonePermission = await Camera.requestMicrophonePermission();
+
+    if (check(PERMISSIONS.ANDROID.CAMERA) !== RESULTS.GRANTED) {
+      await request(PERMISSIONS.ANDROID.CAMERA);
+    }
+
+    if (check(PERMISSIONS.ANDROID.RECORD_AUDIO) !== RESULTS.GRANTED) {
+      await request(PERMISSIONS.ANDROID.RECORD_AUDIO);
+    }
+
+    if (check(PERMISSIONS.ANDROID.READ_EXTERNAL_STORAGE) !== RESULTS.GRANTED) {
+      await request(PERMISSIONS.ANDROID.READ_EXTERNAL_STORAGE);
+    }
+
+    if (check(PERMISSIONS.ANDROID.WRITE_EXTERNAL_STORAGE) !== RESULTS.GRANTED) {
+      await request(PERMISSIONS.ANDROID.WRITE_EXTERNAL_STORAGE);
+    }
   };
 
   const getAvailableCameraDevices = async () => {
@@ -82,28 +119,84 @@ const App = props => {
     const photo = await cameraRef.current.takePhoto({
       flash: 'on',
     });
-    setLastPhotoPath(photo.path);
+
+    CameraRoll.save(`file://${photo.path}`, { type: 'photo' });
+    setLastPhotoPath(`file://${photo.path}`);
+  };
+
+  const startRecording = () => {
+    if (recording) {
+      cameraRef.current.stopRecording();
+      setRecording(false);
+    } else {
+      cameraRef.current.startRecording({
+        flash: 'on',
+        onRecordingFinished,
+        onRecordingError,
+      });
+      setRecording(true);
+    }
+  };
+  const onRecordingFinished = d => {
+    console.log(d);
+  };
+  const onRecordingError = e => {
+    console.error(e);
   };
 
   const selectedDevice = getSelectedDevice();
 
   return (
     <View style={styles.container}>
-      {CameraIsOk && selectedDevice && <Camera ref={cameraRef} style={styles.camera} device={selectedDevice[frontOrBack]} isActive photo />}
+      {CameraIsOk && selectedDevice && (
+        <Camera
+          ref={cameraRef}
+          style={styles.camera}
+          device={selectedDevice[frontOrBack]}
+          isActive
+          photo={type === 'photo'}
+          video={type === 'video'}
+        />
+      )}
 
       <View style={styles.subContainer}>
-        {lastPhotoPath ? (
-          <View style={styles.lastPhotoContainer}>
-            <Image source={{ uri: 'file://' + lastPhotoPath }} style={[styles.lastPhoto, { width: width * 0.14, height: width * 0.14 }]} />
-          </View>
-        ) : null}
+        <View style={styles.bottomContainer}>
+          <View style={styles.typePicker}>
+            <TouchableOpacity
+              style={[{ width: width * 0.14 }, styles.typeButton]}
+              onPress={() => setCameraType('video')}>
+              <Text style={styles.typeButtonText}>video</Text>
+            </TouchableOpacity>
 
-        <TouchableOpacity
-          onPressIn={() => setTakePhotoButtonPressed(true)}
-          onPressOut={() => setTakePhotoButtonPressed(false)}
-          onPress={() => takePhoto()}
-          style={takePhotoButtonPressed ? styles.takePhotoButtonPressed : styles.takePhotoButton}
-        />
+            <TouchableOpacity
+              style={[{ width: width * 0.14 }, styles.typeButton]}
+              onPress={() => setCameraType('photo')}>
+              <Text style={styles.typeButtonText}>photo</Text>
+            </TouchableOpacity>
+
+            <View style={[{ width: width * 0.14 }, styles.bottomBar, type === 'photo' && { left: null, right: 0 }]} />
+          </View>
+
+          <View style={styles.bottomSubContainer}>
+            <View style={[{ width: width * 0.14 }, styles.lastPhotoContainer]}>
+              {lastPhotoPath ? (
+                <Image
+                  source={{ uri: lastPhotoPath }}
+                  style={[styles.lastPhoto, { width: width * 0.14, height: width * 0.14 }]}
+                />
+              ) : null}
+            </View>
+
+            <TouchableOpacity
+              onPressIn={() => setTakePhotoButtonPressed(true)}
+              onPressOut={() => setTakePhotoButtonPressed(false)}
+              onPress={type === 'video' ? () => startRecording() : () => takePhoto()}
+              style={takePhotoButtonPressed ? styles.takePhotoButtonPressed : styles.takePhotoButton}
+            />
+
+            <View style={{ width: width * 0.14, margin: 16 }} />
+          </View>
+        </View>
       </View>
     </View>
   );
@@ -121,6 +214,41 @@ const styles = StyleSheet.create({
     backgroundColor: 'transparent',
   },
 
+  bottomContainer: {
+    ...StyleSheet.absoluteFill,
+    top: null,
+    backgroundColor: '#00000033',
+  },
+  bottomSubContainer: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+  },
+
+  typePicker: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignSelf: 'center',
+  },
+  typeButton: {
+    alignItems: 'center',
+  },
+  typeButtonText: {
+    color: '#fff',
+    fontSize: 13,
+    fontWeight: 'bold',
+  },
+  bottomBar: {
+    height: 2,
+    borderBottomLeftRadius: 4,
+    borderBottomRightRadius: 4,
+    borderTopLeftRadius: 1,
+    borderTopRightRadius: 1,
+    position: 'absolute',
+    bottom: -2,
+    left: 0,
+    backgroundColor: '#fff',
+  },
+
   takePhotoButton: {
     borderWidth: 3,
     borderRadius: 999,
@@ -128,9 +256,8 @@ const styles = StyleSheet.create({
     aspectRatio: 1,
     borderColor: '#fff',
     alignSelf: 'center',
-    position: 'absolute',
-    bottom: 16,
-    backgroundColor: '#00000033',
+    backgroundColor: '#00000044',
+    margin: 16,
   },
   takePhotoButtonPressed: {
     borderWidth: 0,
@@ -138,15 +265,13 @@ const styles = StyleSheet.create({
     width: '14%',
     aspectRatio: 1,
     alignSelf: 'center',
-    position: 'absolute',
-    bottom: 16,
     backgroundColor: '#fff',
+    margin: 16,
   },
 
   lastPhotoContainer: {
-    position: 'absolute',
-    bottom: 16,
-    left: 32,
+    margin: 16,
+    aspectRatio: 1,
   },
   lastPhoto: {
     borderRadius: 999,

@@ -10,8 +10,10 @@
     "lint": "eslint ."
   },
   "dependencies": {
+    "@react-native-camera-roll/camera-roll": "^5.1.0",
     "react": "18.1.0",
     "react-native": "0.70.6",
+    "react-native-permissions": "^3.6.1",
     "react-native-scalable-image": "^1.1.0",
     "react-native-vision-camera": "^2.15.2"
   },
